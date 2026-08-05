@@ -18,3 +18,5 @@ exclude = [".env", ".env.*", "node_modules/**", "target/**", "dist/**", "*.log"]
 [dependencies]
 "evento-globolo/evgl-interfaces" = "^0.1.0"
 "evento-globolo/evgl-libs" = "^0.1.0"
+"evento-globolo/evgl-sync" = "^0.1.0"
+"shared-auth/shared-auth-clients" = "^0.1.0"
