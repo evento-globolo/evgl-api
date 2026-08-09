@@ -75,19 +75,17 @@ async fn stream(
     loop {
         tokio::select! {
             update = receiver.recv() => match update {
-                Ok(update) => {
-                    match serde_json::to_string(&update) {
-                        Ok(payload) => {
-                            if sender.send(Message::Text(payload.into())).await.is_err() {
-                                break;
-                            }
-                        }
-                        Err(error) => {
-                            tracing::error!(%error, "could not serialize job update");
+                Ok(update) => match serde_json::to_string(&update) {
+                    Ok(payload) => {
+                        if sender.send(Message::Text(payload.into())).await.is_err() {
                             break;
                         }
                     }
-                }
+                    Err(error) => {
+                        tracing::error!(%error, "could not serialize job update");
+                        break;
+                    }
+                },
                 Err(tokio::sync::broadcast::error::RecvError::Lagged(skipped)) => {
                     let payload = serde_json::json!({
                         "type": "resync_required",
