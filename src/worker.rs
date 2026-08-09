@@ -27,6 +27,14 @@ async fn run(state: AppState, job: store::JobRow) -> Result<(), ApiError> {
     );
 
     for target in targets {
+        if target.job_id != job.id {
+            return Err(ApiError::Internal(anyhow::anyhow!(
+                "claimed target {} belongs to job {}, expected {}",
+                target.id,
+                target.job_id,
+                job.id
+            )));
+        }
         let provider = match ProviderKind::from_str(&target.provider) {
             Ok(provider) => provider,
             Err(error) => {
@@ -42,27 +50,22 @@ async fn run(state: AppState, job: store::JobRow) -> Result<(), ApiError> {
                 continue;
             }
         };
-        let connection = match store::get_connection(
-            &state.db,
-            job.user_id,
-            target.connection_id,
-        )
-        .await
-        {
-            Ok(connection) => connection,
-            Err(error) => {
-                fail_target(
-                    &state,
-                    &job,
-                    target.id,
-                    Some(provider),
-                    0,
-                    &format!("provider connection is unavailable: {error}"),
-                )
-                .await?;
-                continue;
-            }
-        };
+        let connection =
+            match store::get_connection(&state.db, job.user_id, target.connection_id).await {
+                Ok(connection) => connection,
+                Err(error) => {
+                    fail_target(
+                        &state,
+                        &job,
+                        target.id,
+                        Some(provider),
+                        0,
+                        &format!("provider connection is unavailable: {error}"),
+                    )
+                    .await?;
+                    continue;
+                }
+            };
         let Some(adapter) = state.providers.get(provider) else {
             fail_target(
                 &state,
@@ -75,10 +78,10 @@ async fn run(state: AppState, job: store::JobRow) -> Result<(), ApiError> {
             .await?;
             continue;
         };
-        let tokens = match state.vault.decrypt(
-            connection.aad().as_bytes(),
-            &connection.token_envelope,
-        ) {
+        let tokens = match state
+            .vault
+            .decrypt(connection.aad().as_bytes(), &connection.token_envelope)
+        {
             Ok(tokens) => tokens,
             Err(error) => {
                 fail_target(
@@ -117,13 +120,8 @@ async fn run(state: AppState, job: store::JobRow) -> Result<(), ApiError> {
                 Ok(publication) => {
                     let value = serde_json::to_value(&publication)
                         .map_err(|error| ApiError::Internal(error.into()))?;
-                    store::target_complete(
-                        &state.db,
-                        target.id,
-                        publication.status,
-                        &value,
-                    )
-                    .await?;
+                    store::target_complete(&state.db, target.id, publication.status, &value)
+                        .await?;
                     emit(
                         &state,
                         &job,
@@ -203,9 +201,7 @@ async fn fail_target(
 fn is_retryable(error: &evgl_provider_sdk::ProviderError) -> bool {
     match error {
         evgl_provider_sdk::ProviderError::Network(_) => true,
-        evgl_provider_sdk::ProviderError::Remote { status, .. } => {
-            *status == 429 || *status >= 500
-        }
+        evgl_provider_sdk::ProviderError::Remote { status, .. } => *status == 429 || *status >= 500,
         _ => false,
     }
 }

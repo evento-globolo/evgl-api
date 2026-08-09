@@ -26,7 +26,9 @@ impl Config {
     pub fn from_env() -> Result<Self> {
         Ok(Self {
             bind: env_or("APP_BIND", "0.0.0.0:8080"),
-            public_url: required("APP_PUBLIC_URL")?.parse().context("APP_PUBLIC_URL")?,
+            public_url: required("APP_PUBLIC_URL")?
+                .parse()
+                .context("APP_PUBLIC_URL")?,
             web_url: required("APP_WEB_URL")?.parse().context("APP_WEB_URL")?,
             database_url: required("DATABASE_URL")?,
             jwt_secret: required("JWT_SECRET")?,
@@ -40,11 +42,14 @@ impl Config {
 }
 
 fn oauth(prefix: &str) -> Result<Option<OAuthProviderConfig>> {
-    let client_id = std::env::var(format!("{prefix}_CLIENT_ID")).ok()
+    let client_id = std::env::var(format!("{prefix}_CLIENT_ID"))
+        .ok()
         .filter(|value| !value.trim().is_empty());
-    let secret = std::env::var(format!("{prefix}_CLIENT_SECRET")).ok()
+    let secret = std::env::var(format!("{prefix}_CLIENT_SECRET"))
+        .ok()
         .filter(|value| !value.trim().is_empty());
-    let redirect = std::env::var(format!("{prefix}_REDIRECT_URI")).ok()
+    let redirect = std::env::var(format!("{prefix}_REDIRECT_URI"))
+        .ok()
         .filter(|value| !value.trim().is_empty());
     match (client_id, secret, redirect) {
         (None, None, None) => Ok(None),

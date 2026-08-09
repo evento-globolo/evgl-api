@@ -1,4 +1,8 @@
-use axum::{http::StatusCode, response::{IntoResponse, Response}, Json};
+use axum::{
+    http::StatusCode,
+    response::{IntoResponse, Response},
+    Json,
+};
 use serde_json::json;
 
 #[derive(Debug, thiserror::Error)]
@@ -28,12 +32,18 @@ impl IntoResponse for ApiError {
             Self::Internal(_) => (StatusCode::INTERNAL_SERVER_ERROR, "internal_error"),
         };
         tracing::error!(error = %self, ?status, "request failed");
-        (status, Json(json!({ "error": code, "message": self.to_string() }))).into_response()
+        (
+            status,
+            Json(json!({ "error": code, "message": self.to_string() })),
+        )
+            .into_response()
     }
 }
 
 impl From<sqlx::Error> for ApiError {
-    fn from(error: sqlx::Error) -> Self { Self::Internal(error.into()) }
+    fn from(error: sqlx::Error) -> Self {
+        Self::Internal(error.into())
+    }
 }
 
 impl From<evgl_provider_sdk::ProviderError> for ApiError {

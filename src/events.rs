@@ -73,7 +73,8 @@ pub async fn cross_post(
     headers: HeaderMap,
     Json(input): Json<CrossPostInput>,
 ) -> Result<(StatusCode, Json<store::JobRow>), ApiError> {
-    let key = headers.get("idempotency-key")
+    let key = headers
+        .get("idempotency-key")
         .and_then(|value| value.to_str().ok())
         .ok_or_else(|| ApiError::BadRequest("Idempotency-Key header is required".into()))?;
     let request = CrossPostRequest {
@@ -81,14 +82,18 @@ pub async fn cross_post(
         targets: input.targets,
         idempotency_key: key.to_owned(),
     };
-    request.validate().map_err(|error| ApiError::BadRequest(error.to_string()))?;
+    request
+        .validate()
+        .map_err(|error| ApiError::BadRequest(error.to_string()))?;
     let _ = store::get_event(&state.db, user_id, event_id).await?;
-    let enqueued = store::enqueue_job(
-        &state.db, user_id, event_id, key, &request.targets
-    ).await?;
+    let enqueued = store::enqueue_job(&state.db, user_id, event_id, key, &request.targets).await?;
     if enqueued.created {
         worker::spawn(state.clone(), enqueued.job.clone());
     }
-    let status = if enqueued.created { StatusCode::ACCEPTED } else { StatusCode::OK };
+    let status = if enqueued.created {
+        StatusCode::ACCEPTED
+    } else {
+        StatusCode::OK
+    };
     Ok((status, Json(enqueued.job)))
 }

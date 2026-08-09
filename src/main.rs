@@ -53,9 +53,10 @@ async fn main() -> anyhow::Result<()> {
 
     let request_id = HeaderName::from_static("x-request-id");
     let app = Router::new()
-        .route("/healthz", get(|| async {
-            Json(serde_json::json!({ "status": "ok", "service": "evgl-api" }))
-        }))
+        .route(
+            "/healthz",
+            get(|| async { Json(serde_json::json!({ "status": "ok", "service": "evgl-api" })) }),
+        )
         .route("/readyz", get(|| async { StatusCode::NO_CONTENT }))
         .route("/v1/providers", get(oauth::providers))
         .route("/v1/oauth/{provider}/start", post(oauth::start))
@@ -71,14 +72,16 @@ async fn main() -> anyhow::Result<()> {
         .layer(PropagateRequestIdLayer::new(request_id.clone()))
         .layer(SetRequestIdLayer::new(request_id, MakeRequestUuid))
         .layer(TraceLayer::new_for_http())
-        .layer(CorsLayer::new()
-            .allow_origin(Any)
-            .allow_headers(Any)
-            .allow_methods([Method::GET, Method::POST, Method::DELETE]))
+        .layer(
+            CorsLayer::new()
+                .allow_origin(Any)
+                .allow_headers(Any)
+                .allow_methods([Method::GET, Method::POST, Method::DELETE]),
+        )
         .with_state(state);
 
     let listener = tokio::net::TcpListener::bind(&config.bind).await?;
-    tracing::info!(bind = %config.bind, "Evento Globolo API listening");
+    tracing::info!(bind = %config.bind, public_url = %config.public_url, "Evento Globolo API listening");
     axum::serve(listener, app)
         .with_graceful_shutdown(shutdown())
         .await?;

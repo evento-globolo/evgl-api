@@ -22,12 +22,6 @@ pub struct ConnectionRow {
 }
 
 impl ConnectionRow {
-    pub fn provider_kind(&self) -> Result<ProviderKind, ApiError> {
-        self.provider.parse().map_err(|error: evgl_domain::DomainError| {
-            ApiError::Internal(error.into())
-        })
-    }
-
     pub fn aad(&self) -> String {
         format!("{}:{}:{}", self.user_id, self.provider, self.account_key)
     }
@@ -68,11 +62,15 @@ pub async fn create_oauth_session(
     sqlx::query(
         "INSERT INTO oauth_sessions
          (state_hash, user_id, provider, pkce_verifier, uses_pkce, expires_at)
-         VALUES ($1, $2, $3, $4, $5, now() + interval '10 minutes')"
+         VALUES ($1, $2, $3, $4, $5, now() + interval '10 minutes')",
     )
-    .bind(state_hash).bind(user_id).bind(provider.as_str())
-    .bind(pkce_verifier).bind(uses_pkce)
-    .execute(db).await?;
+    .bind(state_hash)
+    .bind(user_id)
+    .bind(provider.as_str())
+    .bind(pkce_verifier)
+    .bind(uses_pkce)
+    .execute(db)
+    .await?;
     Ok(())
 }
 
@@ -92,9 +90,12 @@ pub async fn consume_oauth_session(
     let session = sqlx::query_as::<_, OAuthSession>(
         "DELETE FROM oauth_sessions
          WHERE state_hash = $1 AND expires_at > now()
-         RETURNING user_id, provider, pkce_verifier, uses_pkce"
-    ).bind(state_hash).fetch_optional(&mut *tx).await?
-        .ok_or_else(|| ApiError::Unauthorized("OAuth state is invalid or expired".into()))?;
+         RETURNING user_id, provider, pkce_verifier, uses_pkce",
+    )
+    .bind(state_hash)
+    .fetch_optional(&mut *tx)
+    .await?
+    .ok_or_else(|| ApiError::Unauthorized("OAuth state is invalid or expired".into()))?;
     tx.commit().await?;
     Ok(session)
 }
@@ -117,20 +118,26 @@ pub async fn upsert_connection(
            metadata = EXCLUDED.metadata,
            token_envelope = EXCLUDED.token_envelope,
            updated_at = now()
-         RETURNING *"
+         RETURNING *",
     )
-    .bind(Uuid::new_v4()).bind(user_id).bind(provider.as_str())
-    .bind(account_key).bind(display_name).bind(metadata).bind(token_envelope)
-    .fetch_one(db).await?)
+    .bind(Uuid::new_v4())
+    .bind(user_id)
+    .bind(provider.as_str())
+    .bind(account_key)
+    .bind(display_name)
+    .bind(metadata)
+    .bind(token_envelope)
+    .fetch_one(db)
+    .await?)
 }
 
-pub async fn list_connections(
-    db: &PgPool,
-    user_id: Uuid,
-) -> Result<Vec<ConnectionRow>, ApiError> {
+pub async fn list_connections(db: &PgPool, user_id: Uuid) -> Result<Vec<ConnectionRow>, ApiError> {
     Ok(sqlx::query_as::<_, ConnectionRow>(
-        "SELECT * FROM provider_connections WHERE user_id = $1 ORDER BY provider, display_name"
-    ).bind(user_id).fetch_all(db).await?)
+        "SELECT * FROM provider_connections WHERE user_id = $1 ORDER BY provider, display_name",
+    )
+    .bind(user_id)
+    .fetch_all(db)
+    .await?)
 }
 
 pub async fn get_connection(
@@ -139,49 +146,49 @@ pub async fn get_connection(
     id: Uuid,
 ) -> Result<ConnectionRow, ApiError> {
     sqlx::query_as::<_, ConnectionRow>(
-        "SELECT * FROM provider_connections WHERE id = $1 AND user_id = $2"
-    ).bind(id).bind(user_id).fetch_optional(db).await?
-        .ok_or_else(|| ApiError::NotFound("connection not found".into()))
+        "SELECT * FROM provider_connections WHERE id = $1 AND user_id = $2",
+    )
+    .bind(id)
+    .bind(user_id)
+    .fetch_optional(db)
+    .await?
+    .ok_or_else(|| ApiError::NotFound("connection not found".into()))
 }
 
-pub async fn delete_connection(
-    db: &PgPool,
-    user_id: Uuid,
-    id: Uuid,
-) -> Result<(), ApiError> {
-    let result = sqlx::query(
-        "DELETE FROM provider_connections WHERE id = $1 AND user_id = $2"
-    ).bind(id).bind(user_id).execute(db).await?;
+pub async fn delete_connection(db: &PgPool, user_id: Uuid, id: Uuid) -> Result<(), ApiError> {
+    let result = sqlx::query("DELETE FROM provider_connections WHERE id = $1 AND user_id = $2")
+        .bind(id)
+        .bind(user_id)
+        .execute(db)
+        .await?;
     if result.rows_affected() == 0 {
         return Err(ApiError::NotFound("connection not found".into()));
     }
     Ok(())
 }
 
-pub async fn create_event(
-    db: &PgPool,
-    event: &EventDraft,
-) -> Result<(), ApiError> {
-    event.validate().map_err(|error| ApiError::BadRequest(error.to_string()))?;
-    sqlx::query(
-        "INSERT INTO events (id, owner_id, document) VALUES ($1, $2, $3)"
-    ).bind(event.id).bind(event.owner_id).bind(serde_json::to_value(event)
-                    .map_err(|error| ApiError::Internal(error.into()))?)
-     .execute(db).await?;
+pub async fn create_event(db: &PgPool, event: &EventDraft) -> Result<(), ApiError> {
+    event
+        .validate()
+        .map_err(|error| ApiError::BadRequest(error.to_string()))?;
+    sqlx::query("INSERT INTO events (id, owner_id, document) VALUES ($1, $2, $3)")
+        .bind(event.id)
+        .bind(event.owner_id)
+        .bind(serde_json::to_value(event).map_err(|error| ApiError::Internal(error.into()))?)
+        .execute(db)
+        .await?;
     Ok(())
 }
 
-pub async fn get_event(
-    db: &PgPool,
-    user_id: Uuid,
-    event_id: Uuid,
-) -> Result<EventDraft, ApiError> {
-    let document: Option<Value> = sqlx::query_scalar(
-        "SELECT document FROM events WHERE id = $1 AND owner_id = $2"
-    ).bind(event_id).bind(user_id).fetch_optional(db).await?;
+pub async fn get_event(db: &PgPool, user_id: Uuid, event_id: Uuid) -> Result<EventDraft, ApiError> {
+    let document: Option<Value> =
+        sqlx::query_scalar("SELECT document FROM events WHERE id = $1 AND owner_id = $2")
+            .bind(event_id)
+            .bind(user_id)
+            .fetch_optional(db)
+            .await?;
     let document = document.ok_or_else(|| ApiError::NotFound("event not found".into()))?;
-    Ok(serde_json::from_value(document)
-        .map_err(|error| ApiError::Internal(error.into()))?)
+    serde_json::from_value(document).map_err(|error| ApiError::Internal(error.into()))
 }
 
 pub struct EnqueueResult {
@@ -198,22 +205,39 @@ pub async fn enqueue_job(
 ) -> Result<EnqueueResult, ApiError> {
     let mut tx = db.begin().await?;
     if let Some(existing) = sqlx::query_as::<_, JobRow>(
-        "SELECT * FROM cross_post_jobs WHERE user_id = $1 AND idempotency_key = $2"
-    ).bind(user_id).bind(idempotency_key).fetch_optional(&mut *tx).await? {
+        "SELECT * FROM cross_post_jobs WHERE user_id = $1 AND idempotency_key = $2",
+    )
+    .bind(user_id)
+    .bind(idempotency_key)
+    .fetch_optional(&mut *tx)
+    .await?
+    {
         tx.commit().await?;
-        return Ok(EnqueueResult { job: existing, created: false });
+        return Ok(EnqueueResult {
+            job: existing,
+            created: false,
+        });
     }
     let job_id = Uuid::new_v4();
     let job = sqlx::query_as::<_, JobRow>(
         "INSERT INTO cross_post_jobs
          (id, user_id, event_id, idempotency_key, status)
-         VALUES ($1, $2, $3, $4, 'queued') RETURNING *"
-    ).bind(job_id).bind(user_id).bind(event_id).bind(idempotency_key)
-     .fetch_one(&mut *tx).await?;
+         VALUES ($1, $2, $3, $4, 'queued') RETURNING *",
+    )
+    .bind(job_id)
+    .bind(user_id)
+    .bind(event_id)
+    .bind(idempotency_key)
+    .fetch_one(&mut *tx)
+    .await?;
     for target in targets {
         let connection: Option<String> = sqlx::query_scalar(
-            "SELECT provider FROM provider_connections WHERE id = $1 AND user_id = $2"
-        ).bind(target.connection_id).bind(user_id).fetch_optional(&mut *tx).await?;
+            "SELECT provider FROM provider_connections WHERE id = $1 AND user_id = $2",
+        )
+        .bind(target.connection_id)
+        .bind(user_id)
+        .fetch_optional(&mut *tx)
+        .await?;
         let connection_provider = connection.ok_or_else(|| {
             ApiError::BadRequest(format!("connection {} was not found", target.connection_id))
         })?;
@@ -226,10 +250,15 @@ pub async fn enqueue_job(
         sqlx::query(
             "INSERT INTO cross_post_targets
              (id, job_id, connection_id, provider, options, status)
-             VALUES ($1, $2, $3, $4, $5, 'queued')"
-        ).bind(Uuid::new_v4()).bind(job_id).bind(target.connection_id)
-         .bind(target.provider.as_str()).bind(&target.options)
-         .execute(&mut *tx).await?;
+             VALUES ($1, $2, $3, $4, $5, 'queued')",
+        )
+        .bind(Uuid::new_v4())
+        .bind(job_id)
+        .bind(target.connection_id)
+        .bind(target.provider.as_str())
+        .bind(&target.options)
+        .execute(&mut *tx)
+        .await?;
     }
     tx.commit().await?;
     Ok(EnqueueResult { job, created: true })
@@ -240,25 +269,33 @@ pub async fn get_job(
     user_id: Uuid,
     job_id: Uuid,
 ) -> Result<(JobRow, Vec<TargetRow>), ApiError> {
-    let job = sqlx::query_as::<_, JobRow>(
-        "SELECT * FROM cross_post_jobs WHERE id = $1 AND user_id = $2"
-    ).bind(job_id).bind(user_id).fetch_optional(db).await?
-        .ok_or_else(|| ApiError::NotFound("job not found".into()))?;
+    let job =
+        sqlx::query_as::<_, JobRow>("SELECT * FROM cross_post_jobs WHERE id = $1 AND user_id = $2")
+            .bind(job_id)
+            .bind(user_id)
+            .fetch_optional(db)
+            .await?
+            .ok_or_else(|| ApiError::NotFound("job not found".into()))?;
     let targets = sqlx::query_as::<_, TargetRow>(
-        "SELECT * FROM cross_post_targets WHERE job_id = $1 ORDER BY id"
-    ).bind(job_id).fetch_all(db).await?;
+        "SELECT * FROM cross_post_targets WHERE job_id = $1 ORDER BY id",
+    )
+    .bind(job_id)
+    .fetch_all(db)
+    .await?;
     Ok((job, targets))
 }
 
-pub async fn claim_targets(
-    db: &PgPool,
-    job_id: Uuid,
-) -> Result<Vec<TargetRow>, ApiError> {
+pub async fn claim_targets(db: &PgPool, job_id: Uuid) -> Result<Vec<TargetRow>, ApiError> {
     sqlx::query("UPDATE cross_post_jobs SET status = 'running', updated_at = now() WHERE id = $1")
-        .bind(job_id).execute(db).await?;
+        .bind(job_id)
+        .execute(db)
+        .await?;
     Ok(sqlx::query_as::<_, TargetRow>(
-        "SELECT * FROM cross_post_targets WHERE job_id = $1 ORDER BY id"
-    ).bind(job_id).fetch_all(db).await?)
+        "SELECT * FROM cross_post_targets WHERE job_id = $1 ORDER BY id",
+    )
+    .bind(job_id)
+    .fetch_all(db)
+    .await?)
 }
 
 pub async fn target_running(db: &PgPool, target_id: Uuid, attempt: i32) -> Result<(), ApiError> {
@@ -275,8 +312,13 @@ pub async fn target_complete(
     result: &Value,
 ) -> Result<(), ApiError> {
     sqlx::query(
-        "UPDATE cross_post_targets SET status = $2, result = $3, error = NULL WHERE id = $1"
-    ).bind(target_id).bind(status_name(status)).bind(result).execute(db).await?;
+        "UPDATE cross_post_targets SET status = $2, result = $3, error = NULL WHERE id = $1",
+    )
+    .bind(target_id)
+    .bind(status_name(status))
+    .bind(result)
+    .execute(db)
+    .await?;
     Ok(())
 }
 
@@ -287,8 +329,13 @@ pub async fn target_failed(
     error: &str,
 ) -> Result<(), ApiError> {
     sqlx::query(
-        "UPDATE cross_post_targets SET status = 'failed', attempt = $2, error = $3 WHERE id = $1"
-    ).bind(target_id).bind(attempt).bind(error).execute(db).await?;
+        "UPDATE cross_post_targets SET status = 'failed', attempt = $2, error = $3 WHERE id = $1",
+    )
+    .bind(target_id)
+    .bind(attempt)
+    .bind(error)
+    .execute(db)
+    .await?;
     Ok(())
 }
 
@@ -312,13 +359,11 @@ pub async fn finish_job(db: &PgPool, job_id: Uuid) -> Result<(), ApiError> {
     } else {
         "published"
     };
-    sqlx::query(
-        "UPDATE cross_post_jobs SET status = $2, updated_at = now() WHERE id = $1",
-    )
-    .bind(job_id)
-    .bind(status)
-    .execute(db)
-    .await?;
+    sqlx::query("UPDATE cross_post_jobs SET status = $2, updated_at = now() WHERE id = $1")
+        .bind(job_id)
+        .bind(status)
+        .execute(db)
+        .await?;
     Ok(())
 }
 

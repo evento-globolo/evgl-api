@@ -26,7 +26,9 @@ impl FromRequestParts<AppState> for User {
         parts: &mut Parts,
         state: &AppState,
     ) -> Result<Self, Self::Rejection> {
-        let header = parts.headers.get("authorization")
+        let header = parts
+            .headers
+            .get("authorization")
             .and_then(|value| value.to_str().ok())
             .and_then(|value| value.strip_prefix("Bearer "))
             .ok_or((StatusCode::UNAUTHORIZED, "missing bearer token"))?;
@@ -34,9 +36,13 @@ impl FromRequestParts<AppState> for User {
             header,
             &DecodingKey::from_secret(state.jwt_secret.as_bytes()),
             &Validation::new(Algorithm::HS256),
-        ).map_err(|_| (StatusCode::UNAUTHORIZED, "invalid bearer token"))?;
+        )
+        .map_err(|_| (StatusCode::UNAUTHORIZED, "invalid bearer token"))?;
         let _ = token.claims.exp;
-        let id = token.claims.sub.parse()
+        let id = token
+            .claims
+            .sub
+            .parse()
             .map_err(|_| (StatusCode::UNAUTHORIZED, "token subject must be a UUID"))?;
         Ok(User { id })
     }

@@ -14,12 +14,7 @@ use sha2::{Digest, Sha256};
 use std::str::FromStr;
 use uuid::Uuid;
 
-use crate::{
-    auth::User,
-    error::ApiError,
-    state::AppState,
-    store,
-};
+use crate::{auth::User, error::ApiError, state::AppState, store};
 
 #[derive(Serialize)]
 pub struct ProviderView {
@@ -28,9 +23,17 @@ pub struct ProviderView {
 }
 
 pub async fn providers(State(state): State<AppState>) -> Json<Vec<ProviderView>> {
-    Json(state.providers.capabilities().into_iter()
-        .map(|(capabilities, configured)| ProviderView { capabilities, configured })
-        .collect())
+    Json(
+        state
+            .providers
+            .capabilities()
+            .into_iter()
+            .map(|(capabilities, configured)| ProviderView {
+                capabilities,
+                configured,
+            })
+            .collect(),
+    )
 }
 
 pub async fn start(
@@ -40,12 +43,14 @@ pub async fn start(
 ) -> Result<Json<Value>, ApiError> {
     let provider = ProviderKind::from_str(&provider)
         .map_err(|error| ApiError::BadRequest(error.to_string()))?;
-    let adapter = state.providers.get(provider)
+    let adapter = state
+        .providers
+        .get(provider)
         .ok_or_else(|| ApiError::Conflict(format!("{provider} is not configured")))?;
     if !adapter.capabilities().oauth {
-        return Err(ApiError::BadRequest(
-            format!("{provider} uses a manual or secret-based connection flow")
-        ));
+        return Err(ApiError::BadRequest(format!(
+            "{provider} uses a manual or secret-based connection flow"
+        )));
     }
     let state_token = random_urlsafe(32);
     let verifier = random_urlsafe(48);
@@ -58,7 +63,8 @@ pub async fn start(
         provider,
         Some(&verifier),
         oauth.uses_pkce,
-    ).await?;
+    )
+    .await?;
     Ok(Json(json!({
         "provider": provider,
         "authorization_url": oauth.authorization_url,
@@ -93,13 +99,22 @@ pub async fn callback(
     if provider != path_provider {
         return Err(ApiError::Unauthorized("OAuth provider mismatch".into()));
     }
-    let adapter = state.providers.get(provider)
+    let adapter = state
+        .providers
+        .get(provider)
         .ok_or_else(|| ApiError::Conflict(format!("{provider} is not configured")))?;
-    let code = query.code.ok_or_else(|| ApiError::BadRequest("missing OAuth code".into()))?;
-    let tokens = adapter.exchange_code(
-        &code,
-        session.uses_pkce.then_some(session.pkce_verifier.as_deref()).flatten(),
-    ).await?;
+    let code = query
+        .code
+        .ok_or_else(|| ApiError::BadRequest("missing OAuth code".into()))?;
+    let tokens = adapter
+        .exchange_code(
+            &code,
+            session
+                .uses_pkce
+                .then_some(session.pkce_verifier.as_deref())
+                .flatten(),
+        )
+        .await?;
     let accounts = adapter.resolve_accounts(&tokens).await?;
     let mut connection_ids = Vec::with_capacity(accounts.len());
     for account in accounts {
@@ -114,12 +129,16 @@ pub async fn callback(
             &account.display_name,
             &account.metadata,
             &envelope,
-        ).await?;
+        )
+        .await?;
         connection_ids.push(row.id);
     }
-    let mut destination = state.web_url.join("integrations")
+    let mut destination = state
+        .web_url
+        .join("integrations")
         .map_err(|error| ApiError::Internal(error.into()))?;
-    destination.query_pairs_mut()
+    destination
+        .query_pairs_mut()
         .append_pair("connected", provider.as_str())
         .append_pair("accounts", &connection_ids.len().to_string());
     Ok(Redirect::to(destination.as_str()))
@@ -140,21 +159,35 @@ pub async fn create_manual(
     User { id: user_id }: User,
     Json(input): Json<ManualConnectionInput>,
 ) -> Result<Json<store::ConnectionRow>, ApiError> {
-    let adapter = state.providers.get(input.provider)
+    let adapter = state
+        .providers
+        .get(input.provider)
         .ok_or_else(|| ApiError::Conflict(format!("{} is unavailable", input.provider)))?;
     if adapter.capabilities().oauth {
-        return Err(ApiError::BadRequest("use the OAuth start route for this provider".into()));
+        return Err(ApiError::BadRequest(
+            "use the OAuth start route for this provider".into(),
+        ));
     }
     if input.account_key.trim().is_empty() || input.display_name.trim().is_empty() {
-        return Err(ApiError::BadRequest("account_key and display_name are required".into()));
+        return Err(ApiError::BadRequest(
+            "account_key and display_name are required".into(),
+        ));
     }
     if input.provider == ProviderKind::GenericWebhook {
-        let endpoint = input.metadata.get("endpoint").and_then(Value::as_str)
+        let endpoint = input
+            .metadata
+            .get("endpoint")
+            .and_then(Value::as_str)
             .ok_or_else(|| ApiError::BadRequest("metadata.endpoint is required".into()))?;
-        let parsed: url::Url = endpoint.parse()
+        let parsed: url::Url = endpoint
+            .parse()
             .map_err(|_| ApiError::BadRequest("metadata.endpoint is invalid".into()))?;
         validate_webhook_endpoint(&parsed)?;
-        if input.secret.as_deref().is_none_or(|secret| secret.len() < 32) {
+        if input
+            .secret
+            .as_deref()
+            .is_none_or(|secret| secret.len() < 32)
+        {
             return Err(ApiError::BadRequest(
                 "generic_webhook requires a secret containing at least 32 characters".into(),
             ));
@@ -171,9 +204,15 @@ pub async fn create_manual(
     let aad = format!("{}:{}:{}", user_id, input.provider, input.account_key);
     let envelope = state.vault.encrypt(aad.as_bytes(), &tokens)?;
     let row = store::upsert_connection(
-        &state.db, user_id, input.provider, &input.account_key,
-        &input.display_name, &input.metadata, &envelope,
-    ).await?;
+        &state.db,
+        user_id,
+        input.provider,
+        &input.account_key,
+        &input.display_name,
+        &input.metadata,
+        &envelope,
+    )
+    .await?;
     Ok(Json(row))
 }
 
@@ -194,37 +233,49 @@ pub async fn delete_connection(
 }
 
 fn validate_webhook_endpoint(endpoint: &url::Url) -> Result<(), ApiError> {
+    fn blocked_ipv4(address: std::net::Ipv4Addr) -> bool {
+        address.is_private()
+            || address.is_loopback()
+            || address.is_link_local()
+            || address.is_broadcast()
+            || address.is_documentation()
+            || address.is_unspecified()
+    }
+
+    fn blocked_ipv6(address: std::net::Ipv6Addr) -> bool {
+        address.is_loopback()
+            || address.is_unspecified()
+            || address.is_unique_local()
+            || address.is_unicast_link_local()
+            || address.to_ipv4_mapped().is_some_and(blocked_ipv4)
+    }
+
     if endpoint.scheme() != "https" {
-        return Err(ApiError::BadRequest("webhook endpoint must use HTTPS".into()));
+        return Err(ApiError::BadRequest(
+            "webhook endpoint must use HTTPS".into(),
+        ));
     }
-    let host = endpoint
-        .host_str()
-        .ok_or_else(|| ApiError::BadRequest("webhook endpoint must include a host".into()))?;
-    if host.eq_ignore_ascii_case("localhost") || host.ends_with(".localhost") {
-        return Err(ApiError::BadRequest("webhook endpoint cannot target localhost".into()));
-    }
-    if let Ok(address) = host.parse::<std::net::IpAddr>() {
-        let blocked = match address {
-            std::net::IpAddr::V4(address) => {
-                address.is_private()
-                    || address.is_loopback()
-                    || address.is_link_local()
-                    || address.is_broadcast()
-                    || address.is_documentation()
-                    || address.is_unspecified()
+
+    let blocked = match endpoint
+        .host()
+        .ok_or_else(|| ApiError::BadRequest("webhook endpoint must include a host".into()))?
+    {
+        url::Host::Domain(host) => {
+            if host.eq_ignore_ascii_case("localhost") || host.ends_with(".localhost") {
+                return Err(ApiError::BadRequest(
+                    "webhook endpoint cannot target localhost".into(),
+                ));
             }
-            std::net::IpAddr::V6(address) => {
-                address.is_loopback()
-                    || address.is_unspecified()
-                    || address.is_unique_local()
-                    || address.is_unicast_link_local()
-            }
-        };
-        if blocked {
-            return Err(ApiError::BadRequest(
-                "webhook endpoint cannot target a private or local address".into(),
-            ));
+            false
         }
+        url::Host::Ipv4(address) => blocked_ipv4(address),
+        url::Host::Ipv6(address) => blocked_ipv6(address),
+    };
+
+    if blocked {
+        return Err(ApiError::BadRequest(
+            "webhook endpoint cannot target a private or local address".into(),
+        ));
     }
     Ok(())
 }
@@ -239,7 +290,6 @@ fn hash_state(value: &str) -> String {
     URL_SAFE_NO_PAD.encode(Sha256::digest(value.as_bytes()))
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::validate_webhook_endpoint;
@@ -253,6 +303,10 @@ mod tests {
             "https://127.0.0.1/hook",
             "https://192.168.1.2/hook",
             "https://[::1]/hook",
+            "https://[::]/hook",
+            "https://[fc00::1]/hook",
+            "https://[fe80::1]/hook",
+            "https://[::ffff:127.0.0.1]/hook",
         ] {
             assert!(
                 validate_webhook_endpoint(&Url::parse(value).unwrap()).is_err(),
