@@ -1,5 +1,8 @@
 use axum::{
-    extract::{Path, State, WebSocketUpgrade, ws::{Message, WebSocket}},
+    extract::{
+        Path, State, WebSocketUpgrade,
+        ws::{Message, WebSocket},
+    },
     response::Response,
     Json,
 };
@@ -35,16 +38,19 @@ pub async fn get(
     let (job, targets) = store::get_job(&state.db, user_id, job_id).await?;
     Ok(Json(JobView {
         job,
-        targets: targets.into_iter().map(|target| TargetView {
-            id: target.id,
-            connection_id: target.connection_id,
-            provider: target.provider,
-            options: target.options,
-            status: target.status,
-            attempt: target.attempt,
-            result: target.result,
-            error: target.error,
-        }).collect(),
+        targets: targets
+            .into_iter()
+            .map(|target| TargetView {
+                id: target.id,
+                connection_id: target.connection_id,
+                provider: target.provider,
+                options: target.options,
+                status: target.status,
+                attempt: target.attempt,
+                result: target.result,
+                error: target.error,
+            })
+            .collect(),
     }))
 }
 
@@ -71,8 +77,11 @@ async fn stream(
             update = receiver.recv() => match update {
                 Ok(update) => {
                     match serde_json::to_string(&update) {
-                        Ok(payload) if sender.send(Message::Text(payload.into())).await.is_err() => break,
-                        Ok(_) => {}
+                        Ok(payload) => {
+                            if sender.send(Message::Text(payload.into())).await.is_err() {
+                                break;
+                            }
+                        }
                         Err(error) => {
                             tracing::error!(%error, "could not serialize job update");
                             break;
@@ -84,14 +93,18 @@ async fn stream(
                         "type": "resync_required",
                         "skipped": skipped
                     }).to_string();
-                    if sender.send(Message::Text(payload.into())).await.is_err() { break; }
+                    if sender.send(Message::Text(payload.into())).await.is_err() {
+                        break;
+                    }
                 }
                 Err(_) => break,
             },
             message = incoming.next() => match message {
                 Some(Ok(Message::Close(_))) | None => break,
                 Some(Ok(Message::Ping(data))) => {
-                    if sender.send(Message::Pong(data)).await.is_err() { break; }
+                    if sender.send(Message::Pong(data)).await.is_err() {
+                        break;
+                    }
                 }
                 Some(Err(_)) => break,
                 _ => {}
