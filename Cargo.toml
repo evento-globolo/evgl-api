@@ -10,10 +10,10 @@ axum = { version = "0.8", features = ["ws", "macros"] }
 base64 = "0.22"
 chrono = { version = "0.4", features = ["serde"] }
 dashmap = "6"
-evgl-domain = { git = "https://github.com/evento-globolo/evgl-libs", branch = "main" }
-evgl-provider-sdk = { git = "https://github.com/evento-globolo/evgl-libs", branch = "main" }
-evgl-providers = { git = "https://github.com/evento-globolo/evgl-libs", branch = "main" }
-evgl-token-vault = { git = "https://github.com/evento-globolo/evgl-libs", branch = "main" }
+evgl-domain = { git = "https://github.com/evento-globolo/evgl-libs", rev = "de7e858f9707e32e1950bb645e424ff6308bca6a" }
+evgl-provider-sdk = { git = "https://github.com/evento-globolo/evgl-libs", rev = "de7e858f9707e32e1950bb645e424ff6308bca6a" }
+evgl-providers = { git = "https://github.com/evento-globolo/evgl-libs", rev = "de7e858f9707e32e1950bb645e424ff6308bca6a" }
+evgl-token-vault = { git = "https://github.com/evento-globolo/evgl-libs", rev = "de7e858f9707e32e1950bb645e424ff6308bca6a" }
 futures-util = "0.3"
 jsonwebtoken = "9"
 rand = "0.8"
