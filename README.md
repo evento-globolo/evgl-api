@@ -1,41 +1,28 @@
 # evgl-api
 
-**Evento Globolo — Rust REST and WebSocket API server**
+Rust API and WebSocket job service for Evento Globolo.
 
-A global events operating system combining event discovery, publishing, RSVP, ticketing, community, venue, and organizer workflows.
+## What is implemented
 
-This repository was bootstrapped on 2026-08-04. It is designed as an independently deployable component and as a member of the `evgl-monorepo` workspace.
+- JWT-authenticated canonical event create, bounded list, and read operations
+- OAuth connection start/callback flows for Eventbrite, Meetup, and Meta
+- account discovery (Eventbrite organizations and Facebook Pages)
+- AES-256-GCM token envelopes bound to user/provider/account AAD
+- idempotent cross-post jobs and per-target receipts
+- owner-scoped event updates and job-specific WebSocket progress
+- capability-aware Craigslist manual handoffs
+- signed generic webhook destinations
 
-## GitHub target
+## Run
 
-`evento-globolo/evgl-api`
-
-## Baseline
-
-- Rust 2024 edition for backend and native components.
-- Axum HTTP/WebSocket transport.
-- Supabase/PostgreSQL configuration through `DATABASE_URL`, `SUPABASE_URL`, and environment-only secrets.
-- OpenTelemetry-compatible tracing hooks.
-- Docker, Nix, and GitHub Actions entry points.
-- Contracts live in `evgl-interfaces`; shared behavior lives in `evgl-libs`.
-
-### Routes
-
-- `/v1/events`
-- `/v1/events/search`
-- `/v1/organizers`
-- `/v1/venues`
-- `/v1/ws`
-
-## Development
-
-```bash
-cp .env.example .env 2>/dev/null || true
-nix develop  # optional
-cargo fmt --check 2>/dev/null || true
-cargo test 2>/dev/null || true
+```sh
+docker compose up -d postgres
+export DATABASE_URL=postgres://evgl:evgl@localhost:5432/evgl
+export JWT_SECRET='replace-me'
+export TOKEN_VAULT_KEY="$(openssl rand -base64 32)"
+sqlx migrate run
+cargo run
 ```
 
-## Status
-
-Foundation scaffold. Domain behavior, persistence migrations, authentication policy, and production secrets must be reviewed before deployment.
+OAuth client secrets and the token-vault key are environment-only.
+Browser access is restricted to the exact `APP_WEB_URL` origin; provider target payloads never carry credentials.
