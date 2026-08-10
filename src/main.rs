@@ -33,7 +33,7 @@ struct AppState {
     supabase_url: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 struct Event {
     pub id: Uuid,
     pub created_at: DateTime<Utc>,
