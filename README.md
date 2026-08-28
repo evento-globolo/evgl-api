@@ -4,7 +4,17 @@
 
 A global events operating system combining event discovery, publishing, RSVP, ticketing, community, venue, and organizer workflows.
 
-This repository was bootstrapped on 2026-08-04. It is designed as an independently deployable component and as a member of the `evgl-monorepo` workspace.
+## What is implemented
+
+- JWT-authenticated canonical event CRUD
+- OAuth connection start/callback flows for Eventbrite, Meetup, and Meta
+- account discovery (Eventbrite organizations and Facebook Pages)
+- AES-256-GCM token envelopes bound to user/provider/account AAD
+- idempotent cross-post jobs and per-target receipts
+- WebSocket job progress
+- capability-aware Craigslist manual handoffs
+- signed generic webhook destinations
+- transactional ticket inventory and signed offline admissions (`TicketingService`, `AdmissionService`)
 
 ## GitHub target
 
@@ -19,15 +29,18 @@ This repository was bootstrapped on 2026-08-04. It is designed as an independent
 - Docker, Nix, and GitHub Actions entry points.
 - Contracts live in `evgl-interfaces`; shared behavior lives in `evgl-libs`.
 
-### Routes
+## Run
 
-- `/v1/events`
-- `/v1/events/search`
-- `/v1/organizers`
-- `/v1/venues`
-- `/v1/ws`
+```sh
+docker compose up -d postgres
+export DATABASE_URL=postgres://evgl:evgl@localhost:5432/evgl
+export JWT_SECRET='replace-me'
+export TOKEN_VAULT_KEY="$(openssl rand -base64 32)"
+sqlx migrate run
+cargo run
+```
 
-## Development
+OAuth client secrets and the token-vault key are environment-only.
 
 ```bash
 cp .env.example .env 2>/dev/null || true
@@ -43,26 +56,12 @@ migration and exposes transaction-safe holds, checkout/payment idempotency,
 expiry, cancellation/refund, fair waitlist promotion, and aggregate receipts.
 `AdmissionService` applies the dependent admission migration and persists
 entitlements, public verification keys, signed scanner receipts, revocation
-epochs, and deterministic admission decisions. `AdmissionTokenSigner` and
-`verify_admission_token` implement bounded-window Ed25519 QR tokens; scanner
-receipts use the same canonical-signature discipline.
-
-The PostgreSQL integration tests create isolated schemas and destroy only those
-schemas after each run:
+epochs, and deterministic admission decisions.
 
 ```bash
 EVGL_TEST_DATABASE_URL=postgres://postgres:postgres@localhost:5432/postgres \
   cargo test --all-targets --all-features
 ```
-
-CI provides PostgreSQL 18 for the same concurrency, retry, timeout, refund,
-waitlist, offline replay, key-rotation, reconciliation, and revocation canaries.
-HTTP route exposure is gated on integration with the event/organizer boundary
-in PR #9; this branch deliberately does not modify its `src/main.rs` handler.
-
-## Status
-
-Foundation scaffold. Domain behavior, persistence migrations, authentication policy, and production secrets must be reviewed before deployment.
 
 ## Environment secrets
 

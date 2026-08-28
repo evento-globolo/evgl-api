@@ -1,11 +1,13 @@
-FROM rust:1-slim AS build
-WORKDIR /app
+FROM rust:1.88-bookworm AS build
+WORKDIR /src
 COPY . .
-RUN cargo build --release
+RUN cargo build --release --locked || cargo build --release
 
 FROM debian:bookworm-slim
-RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates libssl3 && rm -rf /var/lib/apt/lists/*
-COPY --from=build /app/target/release/evgl-api /usr/local/bin/app
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates libssl3 \
+        && rm -rf /var/lib/apt/lists/*
+COPY --from=build /src/target/release/evgl-api /usr/local/bin/evgl-api
+COPY --from=build /src/target/release/evgl-api /usr/local/bin/app
 ENV HOST=0.0.0.0 PORT=8080
 EXPOSE 8080
 
@@ -22,4 +24,4 @@ COPY --chmod=0644 env/enc/${SOPS_ENV}.env.enc /app/secrets/app.env
 ENV SOPS_SECRETS_FILE=/app/secrets/app.env
 
 ENTRYPOINT ["/usr/local/bin/sops-entrypoint.sh"]
-CMD ["/usr/local/bin/app"]
+CMD ["/usr/local/bin/evgl-api"]
