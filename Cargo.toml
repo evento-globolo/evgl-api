@@ -12,7 +12,7 @@ base64 = "0.22"
 chrono = { version = "0.4", features = ["serde"] }
 dashmap = "6"
 dotenvy = "0.15"
-ed25519-dalek = "2"
+ed25519-dalek = "3"
 evgl-domain = { git = "https://github.com/evento-globolo/evgl-libs", rev = "de7e858f9707e32e1950bb645e424ff6308bca6a" }
 evgl-interfaces = { git = "https://github.com/evento-globolo/evgl-interfaces.git", rev = "5401334622e9035a1ac08ab4c7f2ebeac6013016" }
 evgl-provider-sdk = { git = "https://github.com/evento-globolo/evgl-libs", rev = "de7e858f9707e32e1950bb645e424ff6308bca6a" }
