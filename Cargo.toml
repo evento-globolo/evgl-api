@@ -19,7 +19,7 @@ evgl-provider-sdk = { git = "https://github.com/evento-globolo/evgl-libs", rev =
 evgl-providers = { git = "https://github.com/evento-globolo/evgl-libs", rev = "de7e858f9707e32e1950bb645e424ff6308bca6a" }
 evgl-token-vault = { git = "https://github.com/evento-globolo/evgl-libs", rev = "de7e858f9707e32e1950bb645e424ff6308bca6a" }
 futures-util = "0.3"
-jsonwebtoken = "9"
+jsonwebtoken = "11"
 rand = "0.8"
 sea-orm = { version = "2.0", features = ["macros", "runtime-tokio-rustls", "sqlx-postgres"] }
 secrecy = "0.10"
