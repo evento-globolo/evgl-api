@@ -983,7 +983,7 @@ dependencies = [
  "evgl-token-vault",
  "futures-util",
  "jsonwebtoken",
- "rand 0.8.8",
+ "rand 0.10.2",
  "sea-orm",
  "secrecy",
  "serde",
@@ -1732,7 +1732,7 @@ dependencies = [
  "pem",
  "serde",
  "serde_json",
- "signature",
+ "signature 2.2.0",
  "simple_asn1",
  "zeroize",
 ]
