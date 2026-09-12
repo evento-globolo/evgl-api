@@ -99,11 +99,8 @@ async fn stream(
             },
             message = incoming.next() => match message {
                 Some(Ok(Message::Close(_))) | None => break,
-                Some(Ok(Message::Ping(data))) => {
-                    if sender.send(Message::Pong(data)).await.is_err() {
-                        break;
-                    }
-                }
+                Some(Ok(Message::Ping(data)))
+                    if sender.send(Message::Pong(data.clone())).await.is_err() => break,
                 Some(Err(_)) => break,
                 _ => {}
             }

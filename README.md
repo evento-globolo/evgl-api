@@ -6,12 +6,12 @@ A global events operating system combining event discovery, publishing, RSVP, ti
 
 ## What is implemented
 
-- JWT-authenticated canonical event CRUD
+- JWT-authenticated canonical event create, bounded list, and read operations
 - OAuth connection start/callback flows for Eventbrite, Meetup, and Meta
 - account discovery (Eventbrite organizations and Facebook Pages)
 - AES-256-GCM token envelopes bound to user/provider/account AAD
 - idempotent cross-post jobs and per-target receipts
-- WebSocket job progress
+- owner-scoped event updates and job-specific WebSocket progress
 - capability-aware Craigslist manual handoffs
 - signed generic webhook destinations
 - transactional ticket inventory and signed offline admissions (`TicketingService`, `AdmissionService`)
@@ -70,3 +70,4 @@ Secrets live in this repo **encrypted** with [sops](https://github.com/getsops/s
 `env/dec/<name>.env` (gitignored, mode 0600) and symlinks `./.env` to it. The
 Nix dev shell provides the tooling, `just env-audit` runs keyless in CI, and
 containers decrypt at `docker run` — never at build. See [`env/README.md`](env/README.md).
+Browser access is restricted to the exact `APP_WEB_URL` origin; provider target payloads never carry credentials.

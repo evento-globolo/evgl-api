@@ -1,5 +1,5 @@
 use dashmap::DashMap;
-use evgl_domain::JobUpdate;
+use evgl_domain::{EventDraft, JobUpdate};
 use evgl_token_vault::TokenVault;
 use sqlx::PgPool;
 use std::sync::Arc;
@@ -16,6 +16,7 @@ pub struct AppState {
     pub vault: Arc<TokenVault>,
     pub providers: ProviderRegistry,
     pub job_channels: Arc<DashMap<Uuid, broadcast::Sender<JobUpdate>>>,
+    pub event_channel: broadcast::Sender<EventDraft>,
     pub web_url: Url,
 }
 

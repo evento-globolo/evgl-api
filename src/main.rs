@@ -10,7 +10,7 @@ mod store;
 mod worker;
 
 use axum::{
-    http::{HeaderName, Method, StatusCode},
+    http::{HeaderName, HeaderValue, Method, StatusCode},
     routing::{delete, get, post},
     Json, Router,
 };
@@ -19,7 +19,7 @@ use dashmap::DashMap;
 use sqlx::postgres::PgPoolOptions;
 use std::sync::Arc;
 use tower_http::{
-    cors::{Any, CorsLayer},
+    cors::{AllowOrigin, Any, CorsLayer},
     request_id::{MakeRequestUuid, PropagateRequestIdLayer, SetRequestIdLayer},
     trace::TraceLayer,
 };
@@ -40,6 +40,7 @@ async fn main() -> anyhow::Result<()> {
         .connect(&config.database_url)
         .await?;
     sqlx::migrate!().run(&db).await?;
+    let (event_channel, _) = tokio::sync::broadcast::channel(512);
 
     let state = AppState {
         db,
@@ -49,8 +50,10 @@ async fn main() -> anyhow::Result<()> {
         )?),
         providers: ProviderRegistry::build(&config)?,
         job_channels: Arc::new(DashMap::new()),
+        event_channel,
         web_url: config.web_url.clone(),
     };
+    let web_origin = HeaderValue::try_from(config.web_url.origin().ascii_serialization())?;
 
     let request_id = HeaderName::from_static("x-request-id");
     let app = Router::new()
@@ -65,9 +68,10 @@ async fn main() -> anyhow::Result<()> {
         .route("/v1/connections/manual", post(oauth::create_manual))
         .route("/v1/connections", get(oauth::list_connections))
         .route("/v1/connections/{id}", delete(oauth::delete_connection))
-        .route("/v1/events", post(events::create))
+        .route("/v1/events", get(events::list).post(events::create))
         .route("/v1/events/{id}", get(events::get))
         .route("/v1/events/{id}/cross-post", post(events::cross_post))
+        .route("/v1/ws", get(events::websocket))
         .route("/v1/jobs/{id}", get(jobs::get))
         .route("/v1/jobs/{id}/ws", get(jobs::websocket))
         .layer(PropagateRequestIdLayer::new(request_id.clone()))
@@ -75,7 +79,7 @@ async fn main() -> anyhow::Result<()> {
         .layer(TraceLayer::new_for_http())
         .layer(
             CorsLayer::new()
-                .allow_origin(Any)
+                .allow_origin(AllowOrigin::exact(web_origin))
                 .allow_headers(Any)
                 .allow_methods([Method::GET, Method::POST, Method::DELETE]),
         )

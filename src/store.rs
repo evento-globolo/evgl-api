@@ -191,6 +191,21 @@ pub async fn get_event(db: &PgPool, user_id: Uuid, event_id: Uuid) -> Result<Eve
     serde_json::from_value(document).map_err(|error| ApiError::Internal(error.into()))
 }
 
+pub async fn list_events(db: &PgPool, user_id: Uuid) -> Result<Vec<EventDraft>, ApiError> {
+    let documents: Vec<Value> = sqlx::query_scalar(
+        "SELECT document FROM events WHERE owner_id = $1 ORDER BY created_at DESC LIMIT 100",
+    )
+    .bind(user_id)
+    .fetch_all(db)
+    .await?;
+    documents
+        .into_iter()
+        .map(|document| {
+            serde_json::from_value(document).map_err(|error| ApiError::Internal(error.into()))
+        })
+        .collect()
+}
+
 pub struct EnqueueResult {
     pub job: JobRow,
     pub created: bool,

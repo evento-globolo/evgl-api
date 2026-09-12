@@ -1,10 +1,15 @@
 use axum::{
-    extract::{Path, State},
+    extract::{
+        ws::{Message, WebSocket},
+        Path, State, WebSocketUpgrade,
+    },
     http::{HeaderMap, StatusCode},
+    response::Response,
     Json,
 };
 use chrono::{DateTime, Utc};
 use evgl_domain::{CrossPostRequest, EventDraft, PublishTarget, Venue};
+use futures_util::{SinkExt, StreamExt};
 use serde::Deserialize;
 use std::collections::BTreeMap;
 use url::Url;
@@ -50,7 +55,15 @@ pub async fn create(
         metadata: input.metadata,
     };
     store::create_event(&state.db, &event).await?;
+    let _ = state.event_channel.send(event.clone());
     Ok((StatusCode::CREATED, Json(event)))
+}
+
+pub async fn list(
+    State(state): State<AppState>,
+    User { id: user_id }: User,
+) -> Result<Json<Vec<EventDraft>>, ApiError> {
+    Ok(Json(store::list_events(&state.db, user_id).await?))
 }
 
 pub async fn get(
@@ -96,4 +109,64 @@ pub async fn cross_post(
         StatusCode::OK
     };
     Ok((status, Json(enqueued.job)))
+}
+
+pub async fn websocket(
+    State(state): State<AppState>,
+    User { id: user_id }: User,
+    ws: WebSocketUpgrade,
+) -> Result<Response, ApiError> {
+    let receiver = state.event_channel.subscribe();
+    Ok(ws.on_upgrade(move |socket| stream_events(socket, receiver, user_id)))
+}
+
+async fn stream_events(
+    socket: WebSocket,
+    mut receiver: tokio::sync::broadcast::Receiver<EventDraft>,
+    user_id: Uuid,
+) {
+    let (mut sender, mut incoming) = socket.split();
+    loop {
+        tokio::select! {
+            update = receiver.recv() => match update {
+                Ok(event) if event.owner_id == user_id => {
+                    let payload = serde_json::json!({
+                        "event_id": event.id,
+                        "event_type": "event.created",
+                        "occurred_at": Utc::now(),
+                        "data": event,
+                    });
+                    match serde_json::to_string(&payload) {
+                        Ok(payload) => {
+                            if sender.send(Message::Text(payload.into())).await.is_err() {
+                                break;
+                            }
+                        }
+                        Err(error) => {
+                            tracing::error!(%error, "could not serialize event update");
+                            break;
+                        }
+                    }
+                }
+                Ok(_) => {}
+                Err(tokio::sync::broadcast::error::RecvError::Lagged(skipped)) => {
+                    let payload = serde_json::json!({
+                        "type": "resync_required",
+                        "skipped": skipped,
+                    }).to_string();
+                    if sender.send(Message::Text(payload.into())).await.is_err() {
+                        break;
+                    }
+                }
+                Err(_) => break,
+            },
+            message = incoming.next() => match message {
+                Some(Ok(Message::Close(_))) | None => break,
+                Some(Ok(Message::Ping(data)))
+                    if sender.send(Message::Pong(data.clone())).await.is_err() => break,
+                Some(Err(_)) => break,
+                _ => {}
+            }
+        }
+    }
 }
