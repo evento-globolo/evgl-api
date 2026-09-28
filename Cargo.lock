@@ -983,7 +983,7 @@ dependencies = [
  "evgl-token-vault",
  "futures-util",
  "jsonwebtoken",
- "rand 0.8.8",
+ "rand 0.10.2",
  "sea-orm",
  "secrecy",
  "serde",
