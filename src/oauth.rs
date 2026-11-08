@@ -237,20 +237,31 @@ pub async fn delete_connection(
 
 fn validate_webhook_endpoint(endpoint: &url::Url) -> Result<(), ApiError> {
     fn blocked_ipv4(address: std::net::Ipv4Addr) -> bool {
+        let o = address.octets();
         address.is_private()
             || address.is_loopback()
             || address.is_link_local()
             || address.is_broadcast()
             || address.is_documentation()
+            || address.is_multicast()
             || address.is_unspecified()
+            || o[0] == 0
+            || o[0] >= 240
+            || (o[0] == 100 && (64..=127).contains(&o[1]))
+            || (o[0] == 198 && (18..=19).contains(&o[1]))
+            || (o[0] == 192 && o[1] == 0 && o[2] == 0)
     }
 
     fn blocked_ipv6(address: std::net::Ipv6Addr) -> bool {
-        address.is_loopback()
-            || address.is_unspecified()
-            || address.is_unique_local()
-            || address.is_unicast_link_local()
-            || address.to_ipv4_mapped().is_some_and(blocked_ipv4)
+        if let Some(mapped) = address.to_ipv4_mapped() {
+            return blocked_ipv4(mapped);
+        }
+        // Exclude local, multicast and non-global types; exclude 6to4 and
+        // Teredo, which can encapsulate traffic to otherwise denied IPv4.
+        let s = address.segments();
+        (s[0] & 0xe000) != 0x2000
+            || (s[0] == 0x2001 && (s[1] == 0 || s[1] == 0x0db8))
+            || s[0] == 0x2002
     }
 
     if endpoint.scheme() != "https" {
@@ -258,27 +269,42 @@ fn validate_webhook_endpoint(endpoint: &url::Url) -> Result<(), ApiError> {
             "webhook endpoint must use HTTPS".into(),
         ));
     }
+    if !endpoint.username().is_empty() || endpoint.password().is_some() {
+        return Err(ApiError::BadRequest(
+            "webhook endpoint must not include userinfo credentials".into(),
+        ));
+    }
 
-    let blocked = match endpoint
+    match endpoint
         .host()
         .ok_or_else(|| ApiError::BadRequest("webhook endpoint must include a host".into()))?
     {
         url::Host::Domain(host) => {
-            if host.eq_ignore_ascii_case("localhost") || host.ends_with(".localhost") {
+            let normalized = host.trim_end_matches('.').to_ascii_lowercase();
+            if normalized.is_empty()
+                || normalized == "localhost"
+                || normalized.ends_with(".localhost")
+                || normalized == "local"
+                || normalized.ends_with(".local")
+                || normalized == "internal"
+                || normalized.ends_with(".internal")
+            {
                 return Err(ApiError::BadRequest(
-                    "webhook endpoint cannot target localhost".into(),
+                    "webhook endpoint cannot target local hostnames".into(),
                 ));
             }
-            false
         }
-        url::Host::Ipv4(address) => blocked_ipv4(address),
-        url::Host::Ipv6(address) => blocked_ipv6(address),
-    };
-
-    if blocked {
-        return Err(ApiError::BadRequest(
-            "webhook endpoint cannot target a private or local address".into(),
-        ));
+        url::Host::Ipv4(address) if blocked_ipv4(address) => {
+            return Err(ApiError::BadRequest(
+                "webhook endpoint cannot target a private or non-public address".into(),
+            ));
+        }
+        url::Host::Ipv6(address) if blocked_ipv6(address) => {
+            return Err(ApiError::BadRequest(
+                "webhook endpoint cannot target a private or non-public address".into(),
+            ));
+        }
+        _ => {}
     }
     Ok(())
 }
@@ -402,6 +428,17 @@ mod tests {
             "https://[fc00::1]/hook",
             "https://[fe80::1]/hook",
             "https://[::ffff:127.0.0.1]/hook",
+            "https://localhost./hook",
+            "https://foo.localhost./hook",
+            "https://printer.local/hook",
+            "https://service.internal./hook",
+            "https://admin:password@events.example.com/hook",
+            "https://100.64.0.1/hook",
+            "https://198.18.0.1/hook",
+            "https://224.0.0.1/hook",
+            "https://240.0.0.1/hook",
+            "https://[2001:db8::1]/hook",
+            "https://[2002:c0a8:101::]/hook",
         ] {
             assert!(
                 validate_webhook_endpoint(&Url::parse(value).unwrap()).is_err(),
@@ -412,9 +449,13 @@ mod tests {
 
     #[test]
     fn webhook_endpoint_validation_accepts_public_https() {
-        assert!(validate_webhook_endpoint(
-            &Url::parse("https://events.example.com/hooks/evgl").unwrap(),
-        )
-        .is_ok());
+        for url in [
+            "https://events.example.com/hooks/evgl",
+            "https://events.example.com:8443/hooks/evgl",
+            "https://8.8.8.8/hooks/evgl",
+            "https://[2606:4700:4700::1111]/hooks/evgl",
+        ] {
+            assert!(validate_webhook_endpoint(&Url::parse(url).unwrap()).is_ok(), "{url}");
+        }
     }
 }
