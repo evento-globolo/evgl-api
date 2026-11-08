@@ -6,7 +6,7 @@ use axum::{
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
 use evgl_domain::ProviderKind;
 use evgl_provider_sdk::TokenSet;
-use rand::{rngs::OsRng, RngCore};
+use rand::{rngs::SysRng, TryRng};
 use secrecy::SecretString;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -52,9 +52,9 @@ pub async fn start(
             "{provider} uses a manual or secret-based connection flow"
         )));
     }
-    let state_token = random_urlsafe(32);
-    let verifier = random_urlsafe(48);
-    let challenge = URL_SAFE_NO_PAD.encode(Sha256::digest(verifier.as_bytes()));
+    let state_token = random_urlsafe(32)?;
+    let verifier = random_urlsafe(48)?;
+    let challenge = pkce_challenge(&verifier);
     let oauth = adapter.authorization_url(&state_token, Some(&challenge))?;
     store::create_oauth_session(
         &state.db,
@@ -193,7 +193,10 @@ pub async fn create_manual(
             ));
         }
     }
-    let secret = input.secret.unwrap_or_else(|| random_urlsafe(32));
+    let secret = match input.secret {
+        Some(secret) => secret,
+        None => random_urlsafe(32)?,
+    };
     let tokens = TokenSet {
         access_token: SecretString::from(secret),
         refresh_token: None,
@@ -280,10 +283,27 @@ fn validate_webhook_endpoint(endpoint: &url::Url) -> Result<(), ApiError> {
     Ok(())
 }
 
-fn random_urlsafe(bytes: usize) -> String {
+fn random_urlsafe(bytes: usize) -> Result<String, ApiError> {
+    random_urlsafe_with(bytes, |buffer| {
+        SysRng.try_fill_bytes(buffer).map_err(|error| {
+            ApiError::Internal(anyhow::anyhow!("system CSPRNG unavailable: {error}"))
+        })
+    })
+}
+
+// A single injected fill is sufficient to test both fail-closed RNG errors
+// and deterministic wire encoding without mocking the operating system.
+fn random_urlsafe_with(
+    bytes: usize,
+    fill: impl FnOnce(&mut [u8]) -> Result<(), ApiError>,
+) -> Result<String, ApiError> {
     let mut buffer = vec![0_u8; bytes];
-    OsRng.fill_bytes(&mut buffer);
-    URL_SAFE_NO_PAD.encode(buffer)
+    fill(&mut buffer)?;
+    Ok(URL_SAFE_NO_PAD.encode(buffer))
+}
+
+fn pkce_challenge(verifier: &str) -> String {
+    URL_SAFE_NO_PAD.encode(Sha256::digest(verifier.as_bytes()))
 }
 
 fn hash_state(value: &str) -> String {
@@ -292,8 +312,83 @@ fn hash_state(value: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::validate_webhook_endpoint;
+    use super::{hash_state, pkce_challenge, random_urlsafe, random_urlsafe_with, validate_webhook_endpoint};
+    use crate::error::ApiError;
+    use std::collections::HashSet;
+    use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
     use url::Url;
+
+    #[test]
+    fn oauth_tokens_are_urlsafe_and_have_requested_entropy_size() {
+        for size in [32, 48] {
+            let token = random_urlsafe(size).expect("system CSPRNG must be available in tests");
+            assert_eq!(
+                URL_SAFE_NO_PAD.decode(token.as_bytes()).unwrap().len(),
+                size
+            );
+            assert!(token
+                .bytes()
+                .all(|byte| byte.is_ascii_alphanumeric() || byte == b'-' || byte == b'_'));
+        }
+    }
+
+    #[test]
+    fn tokens_use_distinct_system_randomness_across_calls() {
+        // A duplicate among 32 fresh 256-bit tokens would be astronomically
+        // unlikely; this catches accidental constant/deterministic output.
+        let mut seen = HashSet::new();
+        for _ in 0..32 {
+            let token = random_urlsafe(32).expect("system CSPRNG unavailable");
+            assert_eq!(token.len(), 43); // 32 bytes, base64url without padding
+            assert!(seen.insert(token), "duplicate OAuth random state");
+        }
+    }
+
+    #[test]
+    fn injected_rng_failure_is_not_silently_encoded() {
+        let result = random_urlsafe_with(32, |buffer| {
+            buffer.fill(0xAA); // Failure must still prevent returning a token.
+            Err(ApiError::Internal(anyhow::anyhow!("injected rng failure")))
+        });
+        assert!(matches!(result, Err(ApiError::Internal(_))));
+    }
+
+    #[test]
+    fn injected_bytes_are_encoded_without_padding_or_substitution() {
+        let token = random_urlsafe_with(3, |buffer| {
+            buffer.copy_from_slice(&[0xfb, 0xff, 0xff]);
+            Ok(())
+        })
+        .unwrap();
+        assert_eq!(token, "-___");
+    }
+
+    #[test]
+    fn pkce_s256_matches_rfc7636_appendix_b() {
+        assert_eq!(
+            pkce_challenge("dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk"),
+            "E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM"
+        );
+    }
+
+    #[test]
+    fn state_hash_matches_sha256_base64url_known_answer() {
+        // SHA-256("abc") encoded with unpadded Base64URL; independent known vector.
+        assert_eq!(
+            hash_state("abc"),
+            "ungWv48Bz-pBQUDeXa4iI7ADYaOWF3qctBD_YfIAFa0"
+        );
+    }
+
+    #[test]
+    fn state_hash_is_deterministic_and_not_the_original_state() {
+        let a = hash_state("state-alpha");
+        assert_eq!(a, hash_state("state-alpha"));
+        assert_ne!(a, hash_state("state-beta"));
+        assert_ne!(a, "state-alpha");
+        assert_eq!(URL_SAFE_NO_PAD.decode(a.as_bytes()).unwrap().len(), 32);
+        assert!(!a.ends_with('='));
+    }
 
     #[test]
     fn webhook_endpoint_validation_rejects_local_networks() {
