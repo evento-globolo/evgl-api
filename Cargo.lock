@@ -1002,7 +1002,7 @@ dependencies = [
 [[package]]
 name = "evgl-domain"
 version = "0.1.0"
-source = "git+https://github.com/evento-globolo/evgl-libs?rev=de7e858f9707e32e1950bb645e424ff6308bca6a#de7e858f9707e32e1950bb645e424ff6308bca6a"
+source = "git+https://github.com/evento-globolo/evgl-libs?rev=95f1d0eff03df0074fe18401fd35a16809fc90d0#95f1d0eff03df0074fe18401fd35a16809fc90d0"
 dependencies = [
  "chrono",
  "serde",
@@ -1026,7 +1026,7 @@ dependencies = [
 [[package]]
 name = "evgl-provider-sdk"
 version = "0.1.0"
-source = "git+https://github.com/evento-globolo/evgl-libs?rev=de7e858f9707e32e1950bb645e424ff6308bca6a#de7e858f9707e32e1950bb645e424ff6308bca6a"
+source = "git+https://github.com/evento-globolo/evgl-libs?rev=95f1d0eff03df0074fe18401fd35a16809fc90d0#95f1d0eff03df0074fe18401fd35a16809fc90d0"
 dependencies = [
  "async-trait",
  "chrono",
@@ -1042,7 +1042,7 @@ dependencies = [
 [[package]]
 name = "evgl-providers"
 version = "0.1.0"
-source = "git+https://github.com/evento-globolo/evgl-libs?rev=de7e858f9707e32e1950bb645e424ff6308bca6a#de7e858f9707e32e1950bb645e424ff6308bca6a"
+source = "git+https://github.com/evento-globolo/evgl-libs?rev=95f1d0eff03df0074fe18401fd35a16809fc90d0#95f1d0eff03df0074fe18401fd35a16809fc90d0"
 dependencies = [
  "async-trait",
  "chrono",
@@ -1056,13 +1056,14 @@ dependencies = [
  "serde_json",
  "sha2 0.10.9",
  "tracing",
+ "tokio",
  "url",
 ]
 
 [[package]]
 name = "evgl-token-vault"
 version = "0.1.0"
-source = "git+https://github.com/evento-globolo/evgl-libs?rev=de7e858f9707e32e1950bb645e424ff6308bca6a#de7e858f9707e32e1950bb645e424ff6308bca6a"
+source = "git+https://github.com/evento-globolo/evgl-libs?rev=95f1d0eff03df0074fe18401fd35a16809fc90d0#95f1d0eff03df0074fe18401fd35a16809fc90d0"
 dependencies = [
  "aes-gcm",
  "base64 0.22.1",
