@@ -20,7 +20,7 @@ impl ProviderRegistry {
         adapters.insert(ProviderKind::Craigslist, Arc::new(CraigslistAdapter));
         adapters.insert(
             ProviderKind::GenericWebhook,
-            Arc::new(GenericWebhookAdapter::default()),
+            Arc::new(GenericWebhookAdapter),
         );
 
         if let Some(provider) = &config.eventbrite {
