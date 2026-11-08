@@ -6,7 +6,7 @@ use axum::{
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
 use evgl_domain::ProviderKind;
 use evgl_provider_sdk::TokenSet;
-use rand::{rngs::OsRng, RngCore};
+use rand::{rngs::SysRng, TryRng};
 use secrecy::SecretString;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -52,8 +52,8 @@ pub async fn start(
             "{provider} uses a manual or secret-based connection flow"
         )));
     }
-    let state_token = random_urlsafe(32);
-    let verifier = random_urlsafe(48);
+    let state_token = random_urlsafe(32)?;
+    let verifier = random_urlsafe(48)?;
     let challenge = URL_SAFE_NO_PAD.encode(Sha256::digest(verifier.as_bytes()));
     let oauth = adapter.authorization_url(&state_token, Some(&challenge))?;
     store::create_oauth_session(
@@ -193,7 +193,10 @@ pub async fn create_manual(
             ));
         }
     }
-    let secret = input.secret.unwrap_or_else(|| random_urlsafe(32));
+    let secret = match input.secret {
+        Some(secret) => secret,
+        None => random_urlsafe(32)?,
+    };
     let tokens = TokenSet {
         access_token: SecretString::from(secret),
         refresh_token: None,
@@ -280,10 +283,12 @@ fn validate_webhook_endpoint(endpoint: &url::Url) -> Result<(), ApiError> {
     Ok(())
 }
 
-fn random_urlsafe(bytes: usize) -> String {
+fn random_urlsafe(bytes: usize) -> Result<String, ApiError> {
     let mut buffer = vec![0_u8; bytes];
-    OsRng.fill_bytes(&mut buffer);
-    URL_SAFE_NO_PAD.encode(buffer)
+    SysRng.try_fill_bytes(&mut buffer).map_err(|error| {
+        ApiError::Internal(anyhow::anyhow!("system CSPRNG unavailable: {error}"))
+    })?;
+    Ok(URL_SAFE_NO_PAD.encode(buffer))
 }
 
 fn hash_state(value: &str) -> String {
@@ -292,8 +297,19 @@ fn hash_state(value: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::validate_webhook_endpoint;
+    use super::{random_urlsafe, validate_webhook_endpoint};
+    use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
     use url::Url;
+
+    #[test]
+    fn oauth_tokens_are_urlsafe_and_have_requested_entropy_size() {
+        for size in [32, 48] {
+            let token = random_urlsafe(size).expect("system CSPRNG must be available in tests");
+            assert_eq!(URL_SAFE_NO_PAD.decode(token.as_bytes()).unwrap().len(), size);
+            assert!(!token.contains(['+', '/', '=']));
+        }
+    }
+
 
     #[test]
     fn webhook_endpoint_validation_rejects_local_networks() {
