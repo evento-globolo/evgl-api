@@ -372,6 +372,15 @@ mod tests {
     }
 
     #[test]
+    fn state_hash_matches_sha256_base64url_known_answer() {
+        // SHA-256("abc") encoded with unpadded Base64URL; independent known vector.
+        assert_eq!(
+            hash_state("abc"),
+            "ungWv48Bz-pBQUDeXa4iI7ADYaOWF3qctBD_YfIAFa0"
+        );
+    }
+
+    #[test]
     fn state_hash_is_deterministic_and_not_the_original_state() {
         let a = hash_state("state-alpha");
         assert_eq!(a, hash_state("state-alpha"));
