@@ -305,11 +305,15 @@ mod tests {
     fn oauth_tokens_are_urlsafe_and_have_requested_entropy_size() {
         for size in [32, 48] {
             let token = random_urlsafe(size).expect("system CSPRNG must be available in tests");
-            assert_eq!(URL_SAFE_NO_PAD.decode(token.as_bytes()).unwrap().len(), size);
-            assert!(!token.contains(['+', '/', '=']));
+            assert_eq!(
+                URL_SAFE_NO_PAD.decode(token.as_bytes()).unwrap().len(),
+                size
+            );
+            assert!(token
+                .bytes()
+                .all(|byte| byte.is_ascii_alphanumeric() || byte == b'-' || byte == b'_'));
         }
     }
-
 
     #[test]
     fn webhook_endpoint_validation_rejects_local_networks() {
