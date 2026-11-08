@@ -1,7 +1,7 @@
 //! Fail-closed release checks for the four evgl-libs Git dependencies.
- //! Pure manifest/lockfile checks always run. On a protected main-branch
- //! release, CI additionally requires the pinned commit to exist on
- //! evgl-libs/main; PRs may test against reviewed-but-unmerged stack heads.
+//! Pure manifest/lockfile checks always run. On a protected main-branch
+//! release, CI additionally requires the pinned commit to exist on
+//! evgl-libs/main; PRs may test against reviewed-but-unmerged stack heads.
 
 use std::{
     fs,
@@ -64,7 +64,9 @@ fn verify_library_git_pins(manifest: &str, lockfile: &str) -> Result<String, Str
         }
         let pin = quoted_value(line, "rev = \"")?;
         if !is_exact_git_sha(pin) {
-            return Err(format!("{package}: rev must be a full 40-character Git SHA"));
+            return Err(format!(
+                "{package}: rev must be a full 40-character Git SHA"
+            ));
         }
         if let Some(existing) = &expected_pin {
             if existing != pin {
@@ -162,11 +164,7 @@ fn mismatched_lockfile_git_source_fails_closed() {
 
 #[test]
 fn unexpected_git_repo_or_extra_package_fails_closed() {
-    let wrong_host = manifest().replacen(
-        LIB_URL,
-        "https://github.com/untrusted-fork/evgl-libs",
-        1,
-    );
+    let wrong_host = manifest().replacen(LIB_URL, "https://github.com/untrusted-fork/evgl-libs", 1);
     assert!(verify_library_git_pins(&wrong_host, lockfile()).is_err());
 
     let pin = verify_library_git_pins(manifest(), lockfile()).unwrap();
@@ -211,7 +209,10 @@ fn protected_main_requires_git_pin_reachable_from_library_main() {
         .env("GIT_TERMINAL_PROMPT", "0")
         .status()
         .expect("Git is required for protected release checking");
-    assert!(initialized.success(), "unable to create release verification Git repository");
+    assert!(
+        initialized.success(),
+        "unable to create release verification Git repository"
+    );
 
     let fetched = Command::new("git")
         .arg("-C")
